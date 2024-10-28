@@ -1,4 +1,22 @@
+-- Active: 1727284684419@@127.0.0.1@3306@dnd
 -- MySQL Workbench Forward Engineering
+-- Insert sample data into the User table
+INSERT INTO `mydb`.`User` (user_id, user_name, user_surname, user_email, user_password)
+VALUES 
+(1, 'John', 'Doe', 'john.doe@example.com', 'password123'),
+(2, 'Jane', 'Smith', 'jane.smith@example.com', 'password456');
+
+-- Insert sample data into the user_data table
+INSERT INTO `mydb`.`user_data` (pid, user_id, pdf_name, pdf_category, pdf_summary)
+VALUES 
+(1, 1, 'Sample PDF 1', 'Science', 'This is a summary of Sample PDF 1. It covers various scientific topics.'),
+(2, 1, 'Sample PDF 2', 'Math', 'This is a summary of Sample PDF 2. It covers various mathematical concepts.'),
+(3, 2, 'Sample PDF 3', 'History', 'This is a summary of Sample PDF 3. It covers various historical events.');
+
+use mydb;
+ALTER TABLE `user_question` MODIFY COLUMN `question_id` INT NOT NULL AUTO_INCREMENT;
+
+SELECT* FROM user_question;
 
 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0;
 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0;
