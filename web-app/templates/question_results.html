@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style2.css') }}">
+    <title>Generated Questions</title>
+</head>
+<body>
+    <div class="container">
+        <h2>Generated Questions</h2>
+        
+        {% for question in questions %}
+            <div class="question-card">
+                <h3>{{ question['q-title'] }}</h3>
+                <p><strong>Topic:</strong> {{ question['q-topic'] }}</p>
+                <ul class="options">
+                    <li><input type="radio" name="question_{{ loop.index }}" id="q{{ loop.index }}_a" value="A">
+                        <label for="q{{ loop.index }}_a">A. {{ question['opt_a'] }}</label></li>
+                    <li><input type="radio" name="question_{{ loop.index }}" id="q{{ loop.index }}_b" value="B">
+                        <label for="q{{ loop.index }}_b">B. {{ question['opt_b'] }}</label></li>
+                    <li><input type="radio" name="question_{{ loop.index }}" id="q{{ loop.index }}_c" value="C">
+                        <label for="q{{ loop.index }}_c">C. {{ question['opt_c'] }}</label></li>
+                    <li><input type="radio" name="question_{{ loop.index }}" id="q{{ loop.index }}_d" value="D">
+                        <label for="q{{ loop.index }}_d">D. {{ question['opt_d'] }}</label></li>
+                </ul>
+                <button class="show-answer" onclick="showAnswer('{{ loop.index }}')">Show Answer</button>
+                <div class="answer" id="answer_{{ loop.index }}" style="display: none;">
+                    <p><strong>Answer:</strong> {{ question['answer'] }}</p>
+                    <p><strong>Explanation:</strong> {{ question['explanation'] }}</p>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+    <script>
+        function showAnswer(index) {
+            var answerDiv = document.getElementById('answer_' + index);
+            if (answerDiv.style.display === 'none') {
+                answerDiv.style.display = 'block';
+            } else {
+                answerDiv.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
