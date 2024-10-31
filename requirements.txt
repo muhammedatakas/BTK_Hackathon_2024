@@ -1,3 +1,6 @@
+streamlit
 mysql-connector-python
-Flask 
-langchain_community
+werkzeug
+google-generativeai
+langchain-community
+PyMuPDF
