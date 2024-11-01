@@ -127,101 +127,155 @@ def upload_pdf_page():
         st.success(f"Successfully uploaded {uploaded_count} PDF(s).")
         print(f"Total PDFs uploaded: {uploaded_count}")
 
+import streamlit as st
+import os
+
 def generate_questions_page():
-    st.header("Generate Questions")
-    user_id = st.session_state['user_id']
-    files = db.get_user_pdf_data(user_id)
-    print(f"Generating questions for user_id: {user_id}, Files: {files}")
-    
-    if not files:
-        st.info("No PDFs uploaded yet. Please upload PDFs first.")
-        print("No PDFs found for question generation.")
+    if 'generated_questions' in st.session_state:
+        display_questions()
+    else :
+        st.header("Generate Questions")
+        user_id = st.session_state['user_id']
+        files = db.get_user_pdf_data(user_id)
+        print(f"Generating questions for user_id: {user_id}, Files: {files}")
+        
+        if not files:
+            st.info("No PDFs uploaded yet. Please upload PDFs first.")
+            print("No PDFs found for question generation.")
+            return
+
+        # Step 1: Select topic, PDFs, difficulty, and number of questions
+        selected_topic = st.selectbox("Select Topic", ["All"] + [val["pdf_category"] for val in db.get_user_categories(user_id)])
+        pdf_names = [file['pdf_name'] for file in files if file['pdf_category'] == selected_topic or selected_topic == "All"]
+        selected_pdfs = st.multiselect("Select PDFs (up to 3)", pdf_names, max_selections=3)
+        difficulty = st.selectbox("Select Difficulty", ["Easy", "Medium", "Hard"])
+        quantity = st.slider("Number of Questions per PDF", 1, 20, 5)
+        
+        generated_questions = []  # Keep as a local variable
+
+        if st.button("Generate Questions"):
+            print(f"Generating {quantity} questions per PDF with difficulty '{difficulty}'")
+            if not selected_pdfs:
+                st.error("Please select at least one PDF.")
+                print("Question generation failed: No PDFs selected.")
+                return
+            
+            q_gen = QuestionGenerator(api_key=os.getenv('API_KEY'), db_instance=db)
+            
+            for pdf_name in selected_pdfs:
+                try:
+                    pdf_data = next((f for f in files if f['pdf_name'] == pdf_name), None)
+                    if not pdf_data:
+                        st.error(f"PDF '{pdf_name}' not found.")
+                        print(f"PDF '{pdf_name}' data not found.")
+                        continue
+                    
+                    # Generate the specified number of questions for the selected PDF
+                    for _ in range(quantity):
+                        question_data = q_gen.generate_questions_from_summary(
+                            pdf_name, pdf_data['pdf_summary'], pdf_data['pdf_category'], difficulty
+                        )
+                        if question_data:
+                            generated_questions.append(question_data)
+                            print(f"Generated question: {question_data['q_title']}")
+                except Exception as e:
+                    st.error(f"Error generating questions for '{pdf_name}': {e}")
+                    print(f"Error generating questions for '{pdf_name}': {e}")
+            
+            if generated_questions:
+                st.success(f"Generated {len(generated_questions)} questions successfully!")
+                st.session_state['generated_questions'] = generated_questions
+                print(f"Total questions generated: {len(generated_questions)}")
+                # display_questions()  # Display the questions
+                generate_questions_page()
+            else:
+                st.error("No questions were generated. Please try again.")
+                print("No questions were generated.")
+
+def display_questions():
+    if 'generated_questions' not in st.session_state:
+        st.error("No questions available. Generate questions first.")
         return
 
-    # Step 1: Select topic, PDFs, difficulty, and number of questions
-    selected_topic = st.selectbox("Select Topic", ["All"] + [val["pdf_category"] for val in db.get_user_categories(user_id)])
-    pdf_names = [file['pdf_name'] for file in files if file['pdf_category'] == selected_topic or selected_topic == "All"]
-    selected_pdfs = st.multiselect("Select PDFs (up to 3)", pdf_names, max_selections=3)
-    difficulty = st.selectbox("Select Difficulty", ["Easy", "Medium", "Hard"])
-    quantity = st.slider("Number of Questions per PDF", 1, 20, 5)
-    
-    generated_questions = []  # Yerel değişken olarak tutuyoruz
-
-    if st.button("Generate Questions"):
-        print(f"Generating {quantity} questions per PDF with difficulty '{difficulty}'")
-        if not selected_pdfs:
-            st.error("Please select at least one PDF.")
-            print("Question generation failed: No PDFs selected.")
-            return
-        
-        q_gen = QuestionGenerator(api_key=os.getenv('API_KEY'), db_instance=db)
-        
-        for pdf_name in selected_pdfs:
-            try:
-                pdf_data = next((f for f in files if f['pdf_name'] == pdf_name), None)
-                if not pdf_data:
-                    st.error(f"PDF '{pdf_name}' not found.")
-                    print(f"PDF '{pdf_name}' data not found.")
-                    continue
-                
-                # Belirtilen PDF'den belirtilen miktarda soru üret
-                for _ in range(quantity):
-                    question_data = q_gen.generate_questions_from_summary(
-                        pdf_name, pdf_data['pdf_summary'], pdf_data['pdf_category'], difficulty
-                    )
-                    if question_data:
-                        generated_questions.append(question_data)
-                        print(f"Generated question: {question_data['q_title']}")
-            except Exception as e:
-                st.error(f"Error generating questions for '{pdf_name}': {e}")
-                print(f"Error generating questions for '{pdf_name}': {e}")
-        
-        if generated_questions:
-            st.success(f"Generated {len(generated_questions)} questions successfully!")
-            print(f"Total questions generated: {len(generated_questions)}")
-            display_questions(generated_questions, user_id)  # Soruları görüntüleme fonksiyonuna aktar
-        else:
-            st.error("No questions were generated. Please try again.")
-            print("No questions were generated.")
-
-def display_questions(generated_questions, user_id):
     st.header("Answer Questions")
-    answers = []
+    generated_questions = st.session_state['generated_questions']
 
-    # Form içinde soruları göstermek ve yanıtları almak
-    with st.form("questions_form"):
-        for idx, question in enumerate(generated_questions):
-            st.subheader(f"Question {idx + 1}")
-            st.text(question['q_title'])
+    # Initialize user_answers in session_state if not present
+    if 'user_answers' not in st.session_state:
+        st.session_state['user_answers'] = {}
 
-            # Kullanıcının yanıtlarını almak için seçenekler
-            user_answer = st.radio(f"Select an answer for Question {idx + 1}", 
-                                ['A- ' + question['opt_a'], 
-                                 'B- ' + question['opt_b'], 
-                                 'C- ' + question['opt_c'], 
-                                 'D- ' + question['opt_d']], 
-                                key=f'answer_{idx}')
+    # Create a form to prevent re-rendering on radio selection
 
-            # Kullanıcının seçtiği cevabı kısa formatta kaydet
-            selected_answer = user_answer.split('-')[0].strip()
-            question["qua"] = selected_answer  # Kullanıcının cevabını 'qua' alanına ekle
+    for idx, question in enumerate(generated_questions):
+        st.subheader(f"Question {idx + 1}")
+        st.write(question.get('q_title', 'No question title provided'))
 
-        # Formu gönderme butonu
-        submit_answers = st.form_submit_button("Submit Answers")
+        # Display options with fallback
+        options = {
+            'A': question.get('opt_a', 'Option A'),
+            'B': question.get('opt_b', 'Option B'), 
+            'C': question.get('opt_c', 'Option C'), 
+            'D': question.get('opt_d', 'Option D')
+        }
+        
+        # Radio button for answer selection
+        user_answer = st.radio(
+            f"Select an answer for Question {idx + 1}", 
+            [f"{key}-{value}" for key,value in options.items()], # list(options.values()),
+            key=f'answer_{idx}'
+        )
+        st.session_state['user_answers'][idx] = user_answer
+        
+    submitted = st.button("Submit Answers", key="submit_answers")
 
-        # Kullanıcı "Submit Answers" butonuna basarsa
-        if submit_answers:
-            for question in generated_questions:
-                print(question["qua"])
-                try:
-                    # Yanıtları veritabanına ekle
-                    db.insert_user_answer(user_id, question)
-                    print(f"Answer for question {question['question_id']} submitted: {question['qua']}")
-                except Exception as e:
-                    st.error(f"Error saving answer for question {question['question_id']}: {e}")
-                    print(f"Error saving answer for question {question['question_id']}: {e}")
+        # Submit button outside the loop
+      
+    if submitted:
+        score = 0
+        user_answers = st.session_state['user_answers']
+        print("User's answers:", user_answers)
+        try:
+            user_id = st.session_state.get('user_id')
+            if not user_id:
+                st.error("User ID not found.")
+                return
+
+            for idx, question in enumerate(generated_questions):
+                user_answer = user_answers.get(idx)
+                if user_answer:
+                    answer_key = "opt_" + user_answer.split("-")[0].strip().lower()
+                    print(f"Answer key: {answer_key}")
+                    question['qua'] = answer_key  # Save user's answer to question data
+                    
+                    # Check if the answer is correct
+                    if answer_key == question.get('answer'):
+                        st.write(f"Question {idx + 1}: **Correct** 🎉")
+                        score += 1
+                    else:
+                        correct_option = question.get('answer').lower()
+                        correct_answer = question.get(f'opt_{correct_option.lower()}', 'No correct answer provided')
+                        st.write(f"Question {idx + 1}: **Wrong** ❌ (Correct answer: {correct_option}- {correct_answer})")
+            
+            st.write(f"Your total score is {score} out of {len(generated_questions)}")
+            
+            if score == len(generated_questions):
+                st.balloons()
+            
+            # Save answers to the database (uncomment when db method is ready)
+            # for idx, question in enumerate(generated_questions):
+            #     db.insert_user_question(user_id, question)
             
             st.success("All answers submitted successfully!")
+            create_questions_again = st.button("Generate Questions Again") 
+            if create_questions_again:
+                del st.session_state['generated_questions']
+                del st.session_state['user_answers']
+                st.rerun()
+                
+        
+        except Exception as e:
+            st.error(f"Error saving answers: {e}")
+            print(f"Error saving answers: {e}")
 
 
 
