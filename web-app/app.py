@@ -138,11 +138,15 @@ def generate_questions_page():
         print("No PDFs found for question generation.")
         return
 
-    pdf_names = [file['pdf_name'] for file in files]
+    # Step 1: Select topic, PDFs, difficulty, and number of questions
+    selected_topic = st.selectbox("Select Topic", ["All"] + [val["pdf_category"] for val in db.get_user_categories(user_id)])
+    pdf_names = [file['pdf_name'] for file in files if file['pdf_category'] == selected_topic or selected_topic == "All"]
     selected_pdfs = st.multiselect("Select PDFs (up to 3)", pdf_names, max_selections=3)
     difficulty = st.selectbox("Select Difficulty", ["Easy", "Medium", "Hard"])
     quantity = st.slider("Number of Questions per PDF", 1, 20, 5)
     
+    generated_questions = []  # Yerel değişken olarak tutuyoruz
+
     if st.button("Generate Questions"):
         print(f"Generating {quantity} questions per PDF with difficulty '{difficulty}'")
         if not selected_pdfs:
@@ -151,7 +155,6 @@ def generate_questions_page():
             return
         
         q_gen = QuestionGenerator(api_key=os.getenv('API_KEY'), db_instance=db)
-        generated_questions = []
         
         for pdf_name in selected_pdfs:
             try:
@@ -161,12 +164,12 @@ def generate_questions_page():
                     print(f"PDF '{pdf_name}' data not found.")
                     continue
                 
+                # Belirtilen PDF'den belirtilen miktarda soru üret
                 for _ in range(quantity):
                     question_data = q_gen.generate_questions_from_summary(
                         pdf_name, pdf_data['pdf_summary'], pdf_data['pdf_category'], difficulty
                     )
                     if question_data:
-                        db.insert_user_question(user_id, question_data)
                         generated_questions.append(question_data)
                         print(f"Generated question: {question_data['q_title']}")
             except Exception as e:
@@ -174,13 +177,54 @@ def generate_questions_page():
                 print(f"Error generating questions for '{pdf_name}': {e}")
         
         if generated_questions:
-            st.session_state['generated_questions'] = generated_questions
             st.success(f"Generated {len(generated_questions)} questions successfully!")
             print(f"Total questions generated: {len(generated_questions)}")
-            st.rerun()
+            display_questions(generated_questions, user_id)  # Soruları görüntüleme fonksiyonuna aktar
         else:
             st.error("No questions were generated. Please try again.")
             print("No questions were generated.")
+
+def display_questions(generated_questions, user_id):
+    st.header("Answer Questions")
+    answers = []
+
+    # Form içinde soruları göstermek ve yanıtları almak
+    with st.form("questions_form"):
+        for idx, question in enumerate(generated_questions):
+            st.subheader(f"Question {idx + 1}")
+            st.text(question['q_title'])
+
+            # Kullanıcının yanıtlarını almak için seçenekler
+            user_answer = st.radio(f"Select an answer for Question {idx + 1}", 
+                                ['A- ' + question['opt_a'], 
+                                 'B- ' + question['opt_b'], 
+                                 'C- ' + question['opt_c'], 
+                                 'D- ' + question['opt_d']], 
+                                key=f'answer_{idx}')
+
+            # Kullanıcının seçtiği cevabı kısa formatta kaydet
+            selected_answer = user_answer.split('-')[0].strip()
+            question["qua"] = selected_answer  # Kullanıcının cevabını 'qua' alanına ekle
+
+        # Formu gönderme butonu
+        submit_answers = st.form_submit_button("Submit Answers")
+
+        # Kullanıcı "Submit Answers" butonuna basarsa
+        if submit_answers:
+            for question in generated_questions:
+                print(question["qua"])
+                try:
+                    # Yanıtları veritabanına ekle
+                    db.insert_user_answer(user_id, question)
+                    print(f"Answer for question {question['question_id']} submitted: {question['qua']}")
+                except Exception as e:
+                    st.error(f"Error saving answer for question {question['question_id']}: {e}")
+                    print(f"Error saving answer for question {question['question_id']}: {e}")
+            
+            st.success("All answers submitted successfully!")
+
+
+
 
 def view_questions_page():
     st.header("View Generated Questions")
