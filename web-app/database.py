@@ -247,6 +247,21 @@ class Database:
         except mysql.connector.Error as err:
             print(f"Error getting analytics: {err}")
             return []  # Return empty list instead of None
+    def update_question_attempt(self, question_id, new_answer, is_correct):
+        try:
+            self.cursor.execute("""
+                UPDATE user_question 
+                SET qua = %s, 
+                    attempt_count = attempt_count + 1,
+                    topic_mastery = CASE 
+                        WHEN %s THEN ((topic_mastery * attempt_count) + 100) / (attempt_count + 1)
+                        ELSE (topic_mastery * attempt_count) / (attempt_count + 1)
+                    END
+                WHERE question_id = %s
+            """, (new_answer, is_correct, question_id))
+            self.connection.commit()
+        except mysql.connector.Error as err:
+            print(f"Error updating question attempt: {err}")
     def close(self):
         if self.connection.is_connected():
             self.cursor.close()
