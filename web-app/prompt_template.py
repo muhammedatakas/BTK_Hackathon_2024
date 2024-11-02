@@ -18,7 +18,7 @@ genai.configure(api_key=api_key)
 model = genai.GenerativeModel(
     model_name="gemini-1.5-flash",
 )
-chat_session = model.start_chat(history=[])
+
 
 # Initialize Database
 db = Database()
@@ -28,6 +28,7 @@ class QuestionGenerator:
     def __init__(self, api_key, db_instance):    
         self.api_key = api_key
         self.db = db_instance
+        self.chat_session = model.start_chat(history=[])
         print("QuestionGenerator initialized.")
     
     def generate_questions_for_user(self, user_id):
@@ -63,7 +64,7 @@ class QuestionGenerator:
         prompt = self.create_prompt_template(pdf_name, pdf_summary, pdf_category, difficulty)
         print(f"Generated prompt: {prompt}")
         try:
-            response = chat_session.send_message(prompt)
+            response = self.chat_session.send_message(prompt)
             print("Received response from Gemini LLM.")
         except Exception as e:
             print(f"Error sending message to Gemini LLM: {e}")
@@ -79,21 +80,6 @@ class QuestionGenerator:
             print(f"Parsed question data: {question_data}")
         return question_data
 
-    def parse_llm_response(self, response):
-        """
-        Parse the response from the Gemini LLM into a structured dictionary format.
-        """
-        try:
-            response_text = response.text.strip().strip("```json").strip("```").strip()
-            print(f"Response text: {response_text}")
-            question_data = json.loads(response_text)
-            print("JSON parsing successful.")
-            return question_data
-        except json.JSONDecodeError as e:
-            print(f"Error parsing JSON response: {e}")
-            print("Response content:", response.text)
-            return None
-
     def create_prompt_template(self, pdf_name, pdf_summary, pdf_category, difficulty="Medium"):
         prompt = f"""
         You are an educational assistant. Based on the following document information, create a {difficulty} multiple-choice question.
@@ -102,26 +88,42 @@ class QuestionGenerator:
         Category: {pdf_category}
         Summary: {pdf_summary}
 
-        The question should include:
-        1. A clear title (q_title) in question format.
-        2. The topic (q_topic) based on the category.
-        3. Four distinct and plausible answer options (opt_a, opt_b, opt_c, opt_d).
-        4. The correct answer and a detailed explanation of why it's correct.
-
-        Please format the question as:
+        Generate a single multiple-choice question in this exact JSON format:
         {{
-            "q_title": "<insert question title>",
-            "q_topic": "<insert topic>",
-            "opt_a": "<insert option A>",
-            "opt_b": "<insert option B>",
-            "opt_c": "<insert option C>",
-            "opt_d": "<insert option D>",
-            "answer": "<insert correct answer>",
-            "explanation": "<insert explanation>"
+            "q_title": "The actual question text here?",
+            "q_topic": "{pdf_category}",
+            "opt_a": "First option text",
+            "opt_b": "Second option text",
+            "opt_c": "Third option text",
+            "opt_d": "Fourth option text",
+            "answer": "A",
+            "explanation": "Detailed explanation why the answer is correct",
+            "difficulty": "{difficulty}"
         }}
+
+        The answer field MUST be one of: "A", "B", "C", or "D" (uppercase only).
         """
-        print(f"Created prompt for PDF '{pdf_name}'.")
         return prompt
+
+    def parse_llm_response(self, response):
+        try:
+            # Clean up the response text
+            response_text = response.text.strip()
+            # Remove any markdown code block markers
+            response_text = response_text.replace("```json", "").replace("```", "").strip()
+            
+            # Parse the JSON
+            question_data = json.loads(response_text)
+            
+            # Validate the answer format
+            if question_data['answer'] not in ['A', 'B', 'C', 'D']:
+                raise ValueError("Invalid answer format")
+                
+            return question_data
+        except Exception as e:
+            print(f"Error parsing response: {e}")
+            print("Raw response:", response.text)
+            return None
 
     def validate_question_data(self, question_data):
         """
@@ -139,6 +141,35 @@ class QuestionGenerator:
 
         print("Question data validation passed.")
         return True
+
+class AIAssistant:
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.chat_session = model.start_chat(history=[])
+
+    def get_response(self, query, context):
+        """Generate contextual response based on user analytics"""
+        prompt = f"""
+        Context:
+        - User's analytics: {context['analytics']}
+        - Recent questions: {context['recent_questions']}
+        - Topic breakdown: {context['topic_breakdown']}
+        
+        User Query: {query}
+        
+        Please provide a helpful response that:
+        1. Addresses the user's question
+        2. References their performance data
+        3. Gives specific recommendations
+        4. Maintains an encouraging tone
+        """
+        
+        try:
+            response = self.chat_session.send_message(prompt)
+            return response.text
+        except Exception as e:
+            print(f"Error generating AI response: {e}")
+            return "I apologize, but I'm having trouble generating a response right now."
 
 # Example usage
 if __name__ == "__main__":

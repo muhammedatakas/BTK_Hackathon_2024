@@ -4,12 +4,16 @@ import streamlit as st
 import os
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
-from prompt_template import QuestionGenerator
+from prompt_template import QuestionGenerator,AIAssistant
 from summarizer import create_summary
 from pdf_reader import get_pdf_content
 from summarizer import create_summary
 from database import Database
 import re
+import plotly.graph_objects as go
+import plotly.express as px
+from datetime import datetime, timedelta
+import pandas as pd
 
 # Initialize Database
 db = Database()
@@ -18,6 +22,7 @@ db = Database()
 st.set_page_config(page_title="Interactive Question Generation App", layout="wide")
 st.title("Interactive Question Generation App")
 
+q_gen = QuestionGenerator(api_key=os.getenv('API_KEY'), db_instance=db)
 # User Authentication State
 if 'user_id' not in st.session_state:
     st.session_state['user_id'] = None
@@ -80,52 +85,100 @@ def signup_page():
             st.error("Failed to register. Try again.")
 
 def upload_pdf_page():
-    st.header("Upload PDF")
+    st.header("PDF Management")
     user_id = st.session_state['user_id']
-    folder_name = st.text_input("Folder Name")
-    pdf_files = st.file_uploader("Upload PDFs (Max 5)", type="pdf", accept_multiple_files=True)
-    
-    if st.button("Upload PDFs"):
-        print(f"Uploading PDFs for user_id: {user_id}, Folder: {folder_name}")
-        if not folder_name:
-            st.error("Folder name is required.")
-            print("Upload failed: Folder name missing.")
-            return
-        if not pdf_files:
-            st.error("Please select at least one PDF file.")
-            print("Upload failed: No files selected.")
-            return
-        if len(pdf_files) > 5:
-            st.error("You can upload a maximum of 5 PDFs at a time.")
-            print("Upload failed: Exceeded file limit.")
-            return
+
+    # Create tabs for Upload and Manage
+    tab1, tab2 = st.tabs(["Upload PDFs", "Manage PDFs"])
+
+    with tab1:
+        folder_name = st.text_input("Folder Name")
+        pdf_files = st.file_uploader("Upload PDFs (Max 5)", type="pdf", accept_multiple_files=True)
         
-        user_folder = os.path.join('static/uploads', str(user_id), folder_name)
-        os.makedirs(user_folder, exist_ok=True)
-        print(f"User folder created at: {user_folder}")
+        if st.button("Upload PDFs"):
+            if not folder_name:
+                st.error("Folder name is required.")
+                return
+            if not pdf_files:
+                st.error("Please select at least one PDF file.")
+                return
+            if len(pdf_files) > 5:
+                st.error("You can upload a maximum of 5 PDFs at a time.")
+                return
+            
+            user_folder = os.path.join('static/uploads', str(user_id), folder_name)
+            os.makedirs(user_folder, exist_ok=True)
+            
+            uploaded_count = 0
+            for pdf_file in pdf_files:
+                if uploaded_count >= 5:
+                    st.warning("Reached the maximum upload limit of 5 PDFs.")
+                    break
+                filename = secure_filename(pdf_file.name)
+                pdf_path = os.path.join(user_folder, filename)
+                with open(pdf_path, "wb") as f:
+                    f.write(pdf_file.getbuffer())
+                summary = create_summary(get_pdf_content(pdf_path=pdf_path))
+                try:
+                    db.insert_summary(user_id, filename, folder_name, summary)
+                    uploaded_count += 1
+                except Exception as e:
+                    st.error(f"Error uploading PDF '{filename}': {e}")
+            
+            st.success(f"Successfully uploaded {uploaded_count} PDF(s).")
+
+    with tab2:
+        st.subheader("Manage Existing PDFs")
         
-        uploaded_count = 0
-        for pdf_file in pdf_files:
-            if uploaded_count >= 5:
-                st.warning("Reached the maximum upload limit of 5 PDFs.")
-                print("Upload stopped: Maximum limit reached.")
-                break
-            filename = secure_filename(pdf_file.name)
-            pdf_path = os.path.join(user_folder, filename)
-            with open(pdf_path, "wb") as f:
-                f.write(pdf_file.getbuffer())
-            print(f"Uploaded PDF: {pdf_path}")
-            summary = create_summary(get_pdf_content(pdf_path=pdf_path))
-            print(f"Generated summary for {filename}: {summary}")
-            try:
-                db.insert_summary(user_id, filename, folder_name, summary)
-                uploaded_count += 1
-            except Exception as e:
-                st.error(f"Error uploading PDF '{filename}': {e}")
-                print(f"Error uploading PDF '{filename}': {e}")
-        
-        st.success(f"Successfully uploaded {uploaded_count} PDF(s).")
-        print(f"Total PDFs uploaded: {uploaded_count}")
+        # Get all PDFs for the user
+        pdfs = db.get_user_pdf_data(user_id)
+        if not pdfs:
+            st.info("No PDFs uploaded yet.")
+            return
+
+        # Group PDFs by category/folder
+        pdf_by_category = {}
+        for pdf in pdfs:
+            category = pdf['pdf_category']
+            if category not in pdf_by_category:
+                pdf_by_category[category] = []
+            pdf_by_category[category].append(pdf)
+
+        # Display PDFs by category with delete options
+        for category, category_pdfs in pdf_by_category.items():
+            with st.expander(f"📁 {category}"):
+                # Add delete category button
+                if st.button(f"Delete Category: {category}", key=f"del_cat_{category}"):
+                    try:
+                        db.delete_category(user_id, category)
+                        # Remove folder
+                        folder_path = os.path.join('static/uploads', str(user_id), category)
+                        if os.path.exists(folder_path):
+                            import shutil
+                            shutil.rmtree(folder_path)
+                        st.success(f"Category '{category}' deleted successfully.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error deleting category: {e}")
+
+                # List PDFs in category
+                for pdf in category_pdfs:
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.write(f"📄 {pdf['pdf_name']}")
+                    with col2:
+                        if st.button("Delete", key=f"del_{pdf['pdf_name']}"):
+                            try:
+                                db.delete_pdf(user_id, pdf['pdf_name'])
+                                # Remove file
+                                pdf_path = os.path.join('static/uploads', str(user_id), category, pdf['pdf_name'])
+                                if os.path.exists(pdf_path):
+                                    os.remove(pdf_path)
+                                st.success(f"PDF '{pdf['pdf_name']}' deleted successfully.")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error deleting PDF: {e}")
+
 
 import streamlit as st
 import os
@@ -133,64 +186,43 @@ import os
 def generate_questions_page():
     if 'generated_questions' in st.session_state:
         display_questions()
-    else :
+    else:
         st.header("Generate Questions")
         user_id = st.session_state['user_id']
         files = db.get_user_pdf_data(user_id)
-        print(f"Generating questions for user_id: {user_id}, Files: {files}")
         
         if not files:
             st.info("No PDFs uploaded yet. Please upload PDFs first.")
-            print("No PDFs found for question generation.")
             return
 
-        # Step 1: Select topic, PDFs, difficulty, and number of questions
+        # Selection interface
         selected_topic = st.selectbox("Select Topic", ["All"] + [val["pdf_category"] for val in db.get_user_categories(user_id)])
         pdf_names = [file['pdf_name'] for file in files if file['pdf_category'] == selected_topic or selected_topic == "All"]
         selected_pdfs = st.multiselect("Select PDFs (up to 3)", pdf_names, max_selections=3)
         difficulty = st.selectbox("Select Difficulty", ["Easy", "Medium", "Hard"])
         quantity = st.slider("Number of Questions per PDF", 1, 20, 5)
-        
-        generated_questions = []  # Keep as a local variable
 
         if st.button("Generate Questions"):
-            print(f"Generating {quantity} questions per PDF with difficulty '{difficulty}'")
             if not selected_pdfs:
                 st.error("Please select at least one PDF.")
-                print("Question generation failed: No PDFs selected.")
                 return
-            
-            q_gen = QuestionGenerator(api_key=os.getenv('API_KEY'), db_instance=db)
-            
-            for pdf_name in selected_pdfs:
-                try:
+
+            generated_questions = []
+            with st.spinner("Generating questions..."):
+                for pdf_name in selected_pdfs:
                     pdf_data = next((f for f in files if f['pdf_name'] == pdf_name), None)
-                    if not pdf_data:
-                        st.error(f"PDF '{pdf_name}' not found.")
-                        print(f"PDF '{pdf_name}' data not found.")
-                        continue
-                    
-                    # Generate the specified number of questions for the selected PDF
-                    for _ in range(quantity):
-                        question_data = q_gen.generate_questions_from_summary(
-                            pdf_name, pdf_data['pdf_summary'], pdf_data['pdf_category'], difficulty
-                        )
-                        if question_data:
-                            generated_questions.append(question_data)
-                            print(f"Generated question: {question_data['q_title']}")
-                except Exception as e:
-                    st.error(f"Error generating questions for '{pdf_name}': {e}")
-                    print(f"Error generating questions for '{pdf_name}': {e}")
-            
+                    if pdf_data:
+                        for _ in range(quantity):
+                            question_data = q_gen.generate_questions_from_summary(
+                                pdf_name, pdf_data['pdf_summary'], pdf_data['pdf_category'], difficulty
+                            )
+                            if question_data:
+                                generated_questions.append(question_data)
+
             if generated_questions:
-                st.success(f"Generated {len(generated_questions)} questions successfully!")
                 st.session_state['generated_questions'] = generated_questions
-                print(f"Total questions generated: {len(generated_questions)}")
-                # display_questions()  # Display the questions
-                generate_questions_page()
-            else:
-                st.error("No questions were generated. Please try again.")
-                print("No questions were generated.")
+                st.success(f"Generated {len(generated_questions)} questions successfully!")
+                st.rerun()
 
 def display_questions():
     if 'generated_questions' not in st.session_state:
@@ -199,119 +231,412 @@ def display_questions():
 
     st.header("Answer Questions")
     generated_questions = st.session_state['generated_questions']
+    user_id = st.session_state['user_id']
 
-    # Initialize user_answers in session_state if not present
+    # Initialize user_answers if not present
     if 'user_answers' not in st.session_state:
         st.session_state['user_answers'] = {}
 
-    # Create a form to prevent re-rendering on radio selection
-
+    # Display questions and collect answers
     for idx, question in enumerate(generated_questions):
         st.subheader(f"Question {idx + 1}")
-        st.write(question.get('q_title', 'No question title provided'))
+        st.write(question['q_title'])
 
-        # Display options with fallback
+        # Create options dictionary
         options = {
-            'A': question.get('opt_a', 'Option A'),
-            'B': question.get('opt_b', 'Option B'), 
-            'C': question.get('opt_c', 'Option C'), 
-            'D': question.get('opt_d', 'Option D')
+            'A': question['opt_a'],
+            'B': question['opt_b'],
+            'C': question['opt_c'],
+            'D': question['opt_d']
         }
         
-        # Radio button for answer selection
-        user_answer = st.radio(
-            f"Select an answer for Question {idx + 1}", 
-            [f"{key}-{value}" for key,value in options.items()], # list(options.values()),
-            key=f'answer_{idx}'
+        # Display options with labels
+        selected_option = st.radio(
+            "Select your answer:",
+            options=['A', 'B', 'C', 'D'],
+            format_func=lambda x: f"{x}: {options[x]}",
+            key=f"q_{idx}",
+            index=None
         )
-        st.session_state['user_answers'][idx] = user_answer
         
-    submitted = st.button("Submit Answers", key="submit_answers")
+        if selected_option:
+            st.session_state['user_answers'][idx] = selected_option
 
-        # Submit button outside the loop
-      
-    if submitted:
+    # Submit button
+    if st.button("Submit Answers"):
+        if len(st.session_state['user_answers']) != len(generated_questions):
+            st.error("Please answer all questions before submitting.")
+            return
+
         score = 0
-        user_answers = st.session_state['user_answers']
-        print("User's answers:", user_answers)
-        try:
-            user_id = st.session_state.get('user_id')
-            if not user_id:
-                st.error("User ID not found.")
-                return
-
-            for idx, question in enumerate(generated_questions):
-                user_answer = user_answers.get(idx)
-                if user_answer:
-                    answer_key = "opt_" + user_answer.split("-")[0].strip().lower()
-                    print(f"Answer key: {answer_key}")
-                    question['qua'] = answer_key  # Save user's answer to question data
-                    
-                    # Check if the answer is correct
-                    if answer_key == question.get('answer'):
-                        st.write(f"Question {idx + 1}: **Correct** 🎉")
-                        score += 1
-                    else:
-                        correct_option = question.get('answer').lower()
-                        correct_answer = question.get(f'opt_{correct_option.lower()}', 'No correct answer provided')
-                        st.write(f"Question {idx + 1}: **Wrong** ❌ (Correct answer: {correct_option}- {correct_answer})")
-            
-            st.write(f"Your total score is {score} out of {len(generated_questions)}")
-            
-            if score == len(generated_questions):
-                st.balloons()
-            
-            # Save answers to the database (uncomment when db method is ready)
-            # for idx, question in enumerate(generated_questions):
-            #     db.insert_user_question(user_id, question)
-            
-            st.success("All answers submitted successfully!")
-            create_questions_again = st.button("Generate Questions Again") 
-            if create_questions_again:
-                del st.session_state['generated_questions']
-                del st.session_state['user_answers']
-                st.rerun()
-                
+        submitted_questions = 0
         
+        try:
+            for idx, question in enumerate(generated_questions):
+                user_answer = st.session_state['user_answers'].get(idx)
+                
+                # Prepare question data for database
+                question_data = {
+                    'q_topic': question['q_topic'],
+                    'q_title': question['q_title'],
+                    'opt_a': question['opt_a'],
+                    'opt_b': question['opt_b'],
+                    'opt_c': question['opt_c'],
+                    'opt_d': question['opt_d'],
+                    'answer': question['answer'],  # This is qra
+                    'qua': user_answer,
+                    'explanation': question['explanation'],
+                    'difficulty': question.get('difficulty', 'Medium')
+                }
+
+                try:
+                    # Insert into database with proper field mapping
+                    db.insert_user_question(user_id, {
+                        'q_topic': question_data['q_topic'],
+                        'q_title': question_data['q_title'],
+                        'opt_a': question_data['opt_a'],
+                        'opt_b': question_data['opt_b'],
+                        'opt_c': question_data['opt_c'],
+                        'opt_d': question_data['opt_d'],
+                        'qra': question_data['answer'],
+                        'qua': question_data['qua'],
+                        'qex': question_data['explanation'],
+                        'qdiff': question_data['difficulty']
+                    })
+                    
+                    submitted_questions += 1
+                    if user_answer == question['answer']:
+                        score += 1
+                        
+                except Exception as e:
+                    print(f"Error inserting question {idx + 1}: {e}")
+                    continue
+
+            if submitted_questions > 0:
+                st.success(f"Score: {score}/{submitted_questions} ({(score/submitted_questions)*100:.1f}%)")
+                
+                # Show explanations
+                for idx, question in enumerate(generated_questions):
+                    with st.expander(f"Question {idx + 1} Explanation"):
+                        user_answer = st.session_state['user_answers'].get(idx)
+                        st.write(f"Your answer: {user_answer}")
+                        st.write(f"Correct answer: {question['answer']}")
+                        st.write(f"Explanation: {question['explanation']}")
+                
+                # Add Generate Again button
+                if st.button("Generate New Questions"):
+                    del st.session_state['generated_questions']
+                    del st.session_state['user_answers']
+                    st.rerun()
+            else:
+                st.error("Failed to submit any questions. Please try again.")
+
         except Exception as e:
-            st.error(f"Error saving answers: {e}")
-            print(f"Error saving answers: {e}")
+            st.error(f"Error submitting answers: {str(e)}")
+            print(f"Error details: {e}")
 
+            
+            
+# Update the analyze_questions_page function in APP.PY
 
+def analyze_questions_page():
+    st.header("Question Analysis Dashboard")
+    user_id = st.session_state['user_id']
+    
+    # Initialize AI Assistant
+    ai_assistant = AIAssistant(api_key=os.getenv('API_KEY'))
 
+    # Sidebar filters
+    with st.sidebar:
+        st.subheader("Filters")
+        
+        date_range = st.date_input(
+            "Select Date Range",
+            value=(datetime.now() - timedelta(days=30), datetime.now())
+        )
+        
+        topics = db.get_user_categories(user_id)
+        selected_topics = st.multiselect(
+            "Select Topics",
+            options=[topic['pdf_category'] for topic in topics]
+        )
+        
+        difficulty = st.selectbox(
+            "Difficulty Level",
+            ["All", "Easy", "Medium", "Hard"]
+        )
 
-def view_questions_page():
-    st.header("View Generated Questions")
-    generated_questions = db.get_user_questions(st.session_state['user_id'])
-    print(f"Viewing questions for user_id: {st.session_state['user_id']}, Questions: {generated_questions}")
-    if not generated_questions:
-        st.info("No questions generated yet.")
-        print("No questions found.")
+    # Main content
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        analytics = db.get_user_question_analytics(user_id)
+        if analytics:
+            # Performance Overview
+            st.subheader("Performance Overview")
+            fig1 = create_performance_chart(analytics)
+            st.plotly_chart(fig1, use_container_width=True, key="performance_chart")
+            
+            # Topic Mastery Heatmap
+            st.subheader("Topic Mastery Heatmap")
+            fig2 = create_mastery_heatmap(analytics)
+            st.plotly_chart(fig2, use_container_width=True, key="mastery_heatmap")
+        else:
+            st.info("No analytics data available yet. Complete some questions to see your performance.")
+
+    with col2:
+        st.subheader("Learning Insights")
+        if analytics:
+            # Quick Stats
+            total_questions = sum(topic['total_questions'] for topic in analytics)
+            total_correct = sum(topic['correct_answers'] for topic in analytics)
+            
+            if total_questions > 0:
+                accuracy = (total_correct/total_questions)*100
+                st.metric("Questions Attempted", total_questions)
+                st.metric("Overall Accuracy", f"{accuracy:.1f}%")
+            
+                # Topic Recommendations
+                recommendations = db.get_topic_recommendations(user_id)
+                if recommendations:
+                    st.subheader("Recommended Focus Areas")
+                    for rec in recommendations:
+                        st.warning(f"📚 {rec['q_topic']} (Mastery: {rec['avg_mastery']:.1f}%)")
+        else:
+            st.info("Complete some questions to see your insights.")
+
+    # Question Review Tabs
+    st.subheader("Question Review")
+    tabs = st.tabs(["All Questions", "Incorrect Answers", "By Topic"])
+    
+    filtered_questions = get_filtered_questions(
+        user_id, selected_topics, date_range, difficulty, None
+    )
+    
+    with tabs[0]:
+        display_questions_list(filtered_questions)
+    
+    with tabs[1]:
+        incorrect_questions = [q for q in filtered_questions if q['qua'] != q['qra']]
+        display_questions_list(incorrect_questions)
+    
+    with tabs[2]:
+        topic_breakdown = create_topic_breakdown(filtered_questions)
+        if topic_breakdown:
+            fig3 = create_topic_chart(topic_breakdown)
+            st.plotly_chart(fig3, use_container_width=True, key="topic_chart")
+        else:
+            st.info("No topic breakdown available.")
+
+    # AI Learning Assistant
+    st.subheader("AI Learning Assistant")
+    user_query = st.text_input("Ask about your performance or get learning recommendations!")
+    
+    if st.button("Ask"):
+        if user_query:
+            context = {
+                'analytics': analytics if analytics else [],
+                'recent_questions': filtered_questions[-5:] if filtered_questions else [],
+                'topic_breakdown': topic_breakdown if topic_breakdown else {}
+            }
+            response = ai_assistant.get_response(user_query, context)
+            
+            with st.chat_message("assistant"):
+                st.write(response)
+
+def create_performance_chart(analytics):
+    if not analytics:
+        return go.Figure()
+    try:
+        df = pd.DataFrame(analytics)
+        if df.empty:
+            return go.Figure()
+            
+        fig = go.Figure(data=[
+            go.Bar(
+                name='Correct',
+                y=df['q_topic'],
+                x=df['correct_answers'],
+                orientation='h',
+                marker_color='green'
+            ),
+            go.Bar(
+                name='Incorrect',
+                y=df['q_topic'],
+                x=df['total_questions'] - df['correct_answers'],
+                orientation='h',
+                marker_color='red'
+            )
+        ])
+        
+        fig.update_layout(
+            title='Performance by Topic',
+            barmode='stack',
+            xaxis_title='Number of Questions',
+            yaxis_title='Topics',
+            height=400
+        )
+        return fig
+    except Exception as e:
+        print(f"Error creating performance chart: {e}")
+        return go.Figure()
+
+def create_mastery_heatmap(analytics):
+    """Creates a heatmap showing topic mastery levels"""
+    if not analytics:
+        return go.Figure()
+    
+    df = pd.DataFrame(analytics)
+    df['mastery_pct'] = df['correct_answers'] / df['total_questions'] * 100
+    
+    fig = px.imshow(
+        df.pivot_table(
+            values='mastery_pct',
+            columns='q_topic',
+            aggfunc='mean'
+        ),
+        labels=dict(color="Mastery %"),
+        color_continuous_scale="RdYlGn",
+        aspect="auto"
+    )
+    
+    fig.update_layout(
+        title='Topic Mastery Heatmap',
+        height=300
+    )
+    return fig
+
+def get_filtered_questions(user_id, topics, date_range, difficulty, mastery_range):
+    try:
+        questions = db.get_user_questions(user_id)
+        if not questions:
+            return []
+        
+        filtered = [q for q in questions if (
+            (not topics or q['q_topic'] in topics) and
+            (difficulty == "All" or q['qdiff'] == difficulty) and
+            (not mastery_range or mastery_range[0] <= float(q.get('topic_mastery', 0)) <= mastery_range[1]) and
+            (not date_range or (
+                datetime.strptime(str(q['created_at']), '%Y-%m-%d %H:%M:%S').date() >= date_range[0] and
+                datetime.strptime(str(q['created_at']), '%Y-%m-%d %H:%M:%S').date() <= date_range[1]
+            ))
+        )]
+        
+        return filtered
+    except Exception as e:
+        print(f"Error filtering questions: {e}")
+        return []
+
+def create_topic_breakdown(questions):
+    """Creates a breakdown of performance by topic"""
+    breakdown = {}
+    for q in questions:
+        topic = q['q_topic']
+        if topic not in breakdown:
+            breakdown[topic] = {
+                'total': 0,
+                'correct': 0,
+                'incorrect': 0,
+                'mastery': 0.0
+            }
+        
+        breakdown[topic]['total'] += 1
+        if q.get('qua') == q.get('qra'):
+            breakdown[topic]['correct'] += 1
+        else:
+            breakdown[topic]['incorrect'] += 1
+        
+        breakdown[topic]['mastery'] = (
+            breakdown[topic]['correct'] / breakdown[topic]['total'] * 100
+        )
+    
+    return breakdown
+
+def create_topic_chart(breakdown):
+    """Creates a radar chart showing topic mastery"""
+    if not breakdown:
+        return go.Figure()
+    
+    fig = go.Figure(data=go.Scatterpolar(
+        r=[v['mastery'] for v in breakdown.values()],
+        theta=list(breakdown.keys()),
+        fill='toself',
+        name='Topic Mastery'
+    ))
+    
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100]
+            )
+        ),
+        title='Topic Mastery Overview',
+        showlegend=False
+    )
+    return fig
+
+def get_next_topic_suggestions(analytics):
+    """Suggests next topics to study based on performance"""
+    if not analytics:
+        return []
+    
+    # Convert to DataFrame for easier analysis
+    df = pd.DataFrame(analytics)
+    df['mastery'] = df['correct_answers'] / df['total_questions'] * 100
+    
+    # Sort by mastery level and get bottom 3
+    weak_topics = df.nsmallest(3, 'mastery')
+    
+    suggestions = []
+    for _, topic in weak_topics.iterrows():
+        suggestions.append({
+            'topic': topic['q_topic'],
+            'mastery': topic['mastery'],
+            'suggestion': (
+                "Needs immediate attention"
+                if topic['mastery'] < 50
+                else "Could use more practice"
+            )
+        })
+    
+    return suggestions
+
+def display_questions_list(questions):
+    """Displays a list of questions with details"""
+    if not questions:
+        st.info("No questions found matching the criteria.")
         return
     
-    for idx, question in enumerate(generated_questions, start=1):
-        with st.expander(f"Question {idx}: {question['q_title']}"):
-            st.write(f"**Topic:** {question['q_topic']}")
-            st.write(f"A. {question['qA']}")
-            st.write(f"B. {question['qB']}")
-            st.write(f"C. {question['qC']}")
-            st.write(f"D. {question['qD']}")
-            if st.button("Show Answer", key=f"answer_{idx}"):
-                st.write(f"**Answer:** {question['qra']}")
-                st.write(f"**Explanation:** {question['qex']}")
-                print(f"Displayed answer for question {idx}.")
+    for idx, q in enumerate(questions, 1):
+        with st.expander(f"Question {idx}: {q['q_title']}"):
+            st.write(f"**Topic:** {q['q_topic']}")
+            st.write(f"**Difficulty:** {q['qdiff']}")
+            st.write(f"**Your Answer:** {q.get('qua', 'Not answered')}")
+            st.write(f"**Correct Answer:** {q['qra']}")
+            st.write(f"**Explanation:** {q['qex']}")
+            
+            # Show mastery progress
+            if 'topic_mastery' in q:
+                st.progress(float(q['topic_mastery']) / 100)
+                st.write(f"Topic Mastery: {q['topic_mastery']:.1f}%")
 
-# Sidebar Navigation
+
+def clear_session_state():
+    keys_to_remove = ['generated_questions', 'user_answers']
+    for key in keys_to_remove:
+        if key in st.session_state:
+            del st.session_state[key]
+
 if st.session_state['user_id']:
     st.sidebar.title(f"Welcome, {st.session_state['user_name']}")
     if st.sidebar.button("Logout"):
         st.session_state.clear()
         st.success("Logged out successfully.")
-        print("User logged out.")
         st.rerun()
     
     st.sidebar.markdown("---")
-    page = st.sidebar.radio("Navigate", ["Upload PDF", "Generate Questions", "View Questions"])
+    page = st.sidebar.radio("Navigate", ["Upload PDF", "Generate Questions", "Analyze Questions"])
 else:
     st.sidebar.header("Authentication")
     auth_option = st.sidebar.radio("Choose Option", ["Login", "Sign Up"])
@@ -326,13 +651,13 @@ if st.session_state['user_id']:
         upload_pdf_page()
     elif page == "Generate Questions":
         generate_questions_page()
-    elif page == "View Questions":
-        view_questions_page()
-
+    elif page == "Analyze Questions":
+        analyze_questions_page()
 # Close Database Connection on App Exit
 def on_exit():
-    print("Closing database connection.")
-    db.close()
+    if not db._is_closed:  # Check if the connection is already closed
+        
+        db.close()
 
 import atexit
 atexit.register(on_exit)
