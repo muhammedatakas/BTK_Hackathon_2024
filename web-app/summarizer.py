@@ -21,7 +21,6 @@ model = genai.GenerativeModel(
 
 # Metin özetleme fonksiyonu
 def create_summary(obj):
-    
     prompt = f"Summarize the following text: {obj}"
     chat_session = model.start_chat(history=[])
     response = chat_session.send_message(prompt)

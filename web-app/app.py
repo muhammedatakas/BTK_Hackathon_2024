@@ -180,10 +180,9 @@ def upload_pdf_page():
                                 st.error(f"Error deleting PDF: {e}")
 
 
-import streamlit as st
-import os
 
 def generate_questions_page():
+
     if 'generated_questions' in st.session_state:
         display_questions()
     else:
@@ -307,10 +306,11 @@ def display_questions():
                     submitted_questions += 1
                     if user_answer == question['answer']:
                         score += 1
-                        
+                
                 except Exception as e:
                     print(f"Error inserting question {idx + 1}: {e}")
                     continue
+                
 
             if submitted_questions > 0:
                 st.success(f"Score: {score}/{submitted_questions} ({(score/submitted_questions)*100:.1f}%)")
@@ -322,12 +322,14 @@ def display_questions():
                         st.write(f"Your answer: {user_answer}")
                         st.write(f"Correct answer: {question['answer']}")
                         st.write(f"Explanation: {question['explanation']}")
-                
+                        
+                # del st.session_state['generated_questions']
+                # del st.session_state['user_answers']
+                clear_session_state()
                 # Add Generate Again button
                 if st.button("Generate New Questions"):
-                    del st.session_state['generated_questions']
-                    del st.session_state['user_answers']
                     st.rerun()
+                    
             else:
                 st.error("Failed to submit any questions. Please try again.")
 
@@ -612,6 +614,10 @@ def display_questions_list(questions):
         with st.expander(f"Question {idx}: {q['q_title']}"):
             st.write(f"**Topic:** {q['q_topic']}")
             st.write(f"**Difficulty:** {q['qdiff']}")
+            st.write(f"A: {q['qA']}")
+            st.write(f"B: {q['qB']}")
+            st.write(f"C: {q['qC']}")
+            st.write(f"D: {q['qD']}")
             st.write(f"**Your Answer:** {q.get('qua', 'Not answered')}")
             st.write(f"**Correct Answer:** {q['qra']}")
             st.write(f"**Explanation:** {q['qex']}")
@@ -656,8 +662,6 @@ if st.session_state['user_id']:
 # Close Database Connection on App Exit
 def on_exit():
     if not db._is_closed:  # Check if the connection is already closed
-        
         db.close()
-
 import atexit
 atexit.register(on_exit)
