@@ -35,11 +35,6 @@ Gerekli Python kütüphanelerini yüklemek için aşağıdaki adımları izleyin
   pip install -r requirements.txt
   ```
 
-- Eğer `requirements.txt` dosyanız yoksa, ana bağımlılıkları manuel olarak yükleyin:
-  ```bash
-  pip install streamlit werkzeug plotly pandas python-dotenv
-  ```
-
 ## Çevresel Değişkenlerin Tanımlanması
 
 ### API Anahtarının Ayarlanması
@@ -54,26 +49,23 @@ Bu dosya içindeki çevresel değişkenleri yüklemek için `python-dotenv` küt
 ```bash
 pip install python-dotenv
 ```
+ya da 
+
+Anahtarlarınızı sisteminizde kurun:
+- **Windows**:
+  ```bash
+  export API_KEY="anahtar"
+  ```
+- **MacOS/Linux**:
+  ```bash
+  set API_KEY="anahtar"
+  ```
+
 
 ## Veritabanı Ayarları
 
-Uygulama veritabanı işlemleri için `Database` sınıfını kullanır. `database.py` dosyasında veritabanı bağlantı detaylarını ayarladığınızdan emin olun. Eğer veritabanı tablolarının oluşturulması gerekiyorsa, SQL şemalarını inceleyip kurulum işlemlerini gerçekleştirmeniz gerekebilir.
+Uygulama veritabanı işlemleri için `Database` sınıfını kullanır. `database.py` dosyasında veritabanı bağlantı detaylarını ayarladığınızdan emin olun. 
 
-## Dosya Yapısı
-
-Projenin kök dizininde aşağıdaki dosyaların bulunduğundan emin olun:
-
-```
-project_directory/
-│
-├── app.py                 # Ana uygulama dosyası
-├── prompt_template.py      # Soru oluşturma işlevlerini içerir
-├── summarizer.py           # PDF özetleme işlevlerini içerir
-├── pdf_reader.py           # PDF içeriği okuma işlevlerini içerir
-├── database.py             # Veritabanı işlemleri için sınıflar ve işlevler
-├── .env                    # API anahtarları ve diğer gizli bilgiler için
-└── requirements.txt        # Gerekli Python paketleri listesi
-```
 
 ## Uygulamanın Çalıştırılması
 
