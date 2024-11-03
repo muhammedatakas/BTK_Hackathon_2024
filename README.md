@@ -1,4 +1,6 @@
-```markdown
+# Interactive Question Generation App
+Ürün üniversite öğrencileri başta olmak üzere tüm öğrencilerin ve self-learning öğrenmeye dayalı öğrenen kişilerin, çalıştıkları konular üzerinde kendilerini test edebilmesi için geliştirilmiş hızlı bir çözüm sunmaktadır. Bahsi geçen hedef kitle çalıştıkları konular hakkında kendilerini test edebileceği soru havuzu yok ise öğrenciler çalıştıkları konuları kavrayamamaktadır. Öğrencilerin çalıştıkları konular üzerinde kendilerini test edebilmesi tecrübe ile öğrenmenin ilk basamağıdır. Bu sebeple takımımızla "Interactive Question Generation App" ürününü geliştirdik. Bu ürün kullanıcıdan bir PDF dosyası almakta ve dosya üzerinden kullanıcıya, kullanıcının istediği miktarda soru sormaktadır. Ayrıca kullanıcının hatalı soruları analizlenmekte, hangi konularda eksik olduğu görselleştirilmektedir. Kullanıcının yanlış cevapladığı sorular Gemini API kullanılarak açıklanmaktadır. Bunlarla birlikte kullanıcı sorular hakkında aklına takılan, merak ettiği durumları sorup cevabını alabilmektedir.
+
 # Interactive Question Generation App - Kurulum Rehberi
 
 Bu rehber, Interactive Question Generation App uygulamasının kurulum ve çalıştırma adımlarını içerir.
@@ -84,6 +86,9 @@ streamlit run app.py
 Bu komut, tarayıcıda bir Streamlit arayüzü açacak ve uygulamayı kullanmaya başlayabileceksiniz.
 
 ---
+# Ayrıca
+Üç kişiilik takımımızdaki Yazılım ve Bilgisayar Mühendisliği öğrencileri olarak çeşitli konuları pratik yaparak öğrenebiliyoruz ancak pratik yapılacak konu içeriği belirsiz olduğunda hangi senaryoya uygun davranmamız gerektiğini seçmek zaman alıcı olabiliyor. Bu senaryoları daha önceden tecrübe etmek daha nitelikli bir mühendis ağı oluşturacaktır. Örneğin "Algoritma ve Veri Yapıları" dersinde pratik yapılarak stack veri yapısı öğrenilebilir ancak hangi durumda stack kullanılması gerektiği bir öğrenciye göre zor bir seçim olabilir. Kullanılan eğitim materyali içerisinde geçen "stack web browserlarında kullanılır" cümlesi öğrenciye soru olarak geldiği vakit bu konu anlaşılma oranını yükseltecektir. Bununla birlikte; öğrenciler, yüksek lisans/araştırma görevlileri literatür taraması yapıp çeşitli makaleler okumaktadır. Okunan makalelerin anlaşılıp anlaşılmadığını test etmek yine bu uygulama sayesinde yapılabilmektedir.
 
 Uygulama hakkında sorularınız veya karşılaştığınız sorunlar varsa, dökümantasyon ya da destek ekibinizle iletişime geçebilirsiniz.
+
 ```
