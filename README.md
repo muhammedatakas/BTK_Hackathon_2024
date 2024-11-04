@@ -1,5 +1,7 @@
 # Interactive Question Generation App
 
+[questionappV1.webm](https://github.com/user-attachments/assets/d3ddc3e4-7baf-4280-a016-94fc82dbd134)
+
 
 
 Ürün üniversite öğrencileri başta olmak üzere tüm öğrencilerin ve self-learning öğrenmeye dayalı öğrenen kişilerin, çalıştıkları konular üzerinde kendilerini test edebilmesi için geliştirilmiş hızlı bir çözüm sunmaktadır. Bahsi geçen hedef kitle çalıştıkları konular hakkında kendilerini test edebileceği soru havuzu yok ise öğrenciler çalıştıkları konuları kavrayamamaktadır. Öğrencilerin çalıştıkları konular üzerinde kendilerini test edebilmesi tecrübe ile öğrenmenin ilk basamağıdır. Bu sebeple takımımızla "Interactive Question Generation App" ürününü geliştirdik. Bu ürün kullanıcıdan bir PDF dosyası almakta ve dosya üzerinden kullanıcıya, kullanıcının istediği miktarda soru sormaktadır. Ayrıca kullanıcının hatalı soruları analizlenmekte, hangi konularda eksik olduğu görselleştirilmektedir. Kullanıcının yanlış cevapladığı sorular Gemini API kullanılarak açıklanmaktadır. Bunlarla birlikte kullanıcı sorular hakkında aklına takılan, merak ettiği durumları sorup cevabını alabilmektedir.
